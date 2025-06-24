@@ -1,4 +1,4 @@
-def tokenize_text(s: str):
+def tokenize_text(s):
     """
     Tokenize string `s` dengan aturan:
     1. Digit 0-9 dan simbol ! @ $ dianggap “huruf”.
