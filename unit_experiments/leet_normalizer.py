@@ -17,7 +17,7 @@ LEET_MAP = {
     "0": ["o", "O"] # Dipertahankan sebagai 'o' dan 'O'
 }
 
-def normalize_leet(word: str):
+def normalize_leet(word):
     # Jika kata sudah murni alfabet, kembalikan seperti aslinya (tidak diubah case-nya)
     if word.isalpha():
         return word
