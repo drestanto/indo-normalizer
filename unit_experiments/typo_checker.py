@@ -6,7 +6,7 @@ def is_typo(word, target):
     dengan tepat satu operasi (sisip, hapus, substitusi, transposisi).
     """
     distance = DamerauLevenshtein.distance(word, target)
-    return distance == 1
+    return distance == 1 or distance == 2
 
 print(f"'halo' dan 'halo': {is_typo('halo', 'halo')}")
 print(f"'makan' dan 'maakn': {is_typo('maakn', 'makan')}")
