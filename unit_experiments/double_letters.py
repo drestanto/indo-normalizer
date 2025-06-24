@@ -1,4 +1,4 @@
-def normalize_repetitions(word: str) -> str:
+def normalize_repetitions(word):
     """
     Menormalisasi kata dengan mengurangi pengulangan huruf yang berlebihan.
     Jika sebuah karakter berulang 3 kali atau lebih berturut-turut,
