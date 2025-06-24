@@ -158,6 +158,7 @@ ni
 belum
 negara
 kamu
+km
 kamo
 kemuh
 hal
@@ -1157,7 +1158,6 @@ tambah
 sadar
 budaya
 bareng
-bgt
 tambahan
 sdm
 pengunjung

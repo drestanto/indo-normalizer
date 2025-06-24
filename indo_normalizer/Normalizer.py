@@ -4,7 +4,7 @@ import os
 import collections
 
 # Mengimpor semua fungsi dari file functions.py (impor relatif)
-from .functions import ( # Perhatikan titik (.) di depan `functions`
+from .functions import (
     tokenize_text,
     normalize_repetitions,
     is_abbreviation,
@@ -21,6 +21,7 @@ class Normalizer:
     """
     _COMMON_WORDS = set()
     _SLANG_TO_FORMAL_MAP = {}
+    _COMMON_WORDS_SORTED = []
 
     def __init__(self):
         """
@@ -37,30 +38,47 @@ class Normalizer:
         # Load COMMON_WORDS
         try:
             with open(self.common_words_path, "r", encoding="utf-8") as f:
-                self._COMMON_WORDS = set(f.read().lower().split())
+                # Read line by line to preserve order and handle each word
+                # Also, strip whitespace and convert to lowercase for each word
+                words = [line.strip().lower() for line in f if line.strip()]
+
+                # Assign to the class-level sorted list (preserving order)
+                Normalizer._COMMON_WORDS_SORTED = words 
+                
+                # Also assign to the set for faster O(1) lookups later
+                Normalizer._COMMON_WORDS = set(words) 
+                
+            print(f"Korpus '{self.common_words_path}' berhasil dimuat. ({len(Normalizer._COMMON_WORDS_SORTED)} kata)")
         except FileNotFoundError:
-            print(f"WARNING: {self.common_words_path} not found. Some normalization features may not work.")
-            self._COMMON_WORDS = set()
+            print(f"WARNING: '{self.common_words_path}' not found. Some normalization features may not work.")
+            Normalizer._COMMON_WORDS = set()
+            Normalizer._COMMON_WORDS_SORTED = [] # Ensure it's empty if file not found
         except Exception as e:
-            print(f"WARNING: Error loading {self.common_words_path}: {e}. Some normalization features may not work.")
-            self._COMMON_WORDS = set()
+            print(f"WARNING: Error loading '{self.common_words_path}': {e}. Some normalization features may not work.")
+            Normalizer._COMMON_WORDS = set()
+            Normalizer._COMMON_WORDS_SORTED = [] # Ensure it's empty if error occurs
 
         # Load SLANG_TO_FORMAL_MAP
         if os.path.exists(self.slangs_csv_path):
             try:
                 df_slang = pd.read_csv(self.slangs_csv_path)
                 if 'slang' in df_slang.columns and 'formal' in df_slang.columns:
-                    # Pastikan kunci slang diubah ke lowercase jika fungsi slang_to_formal membutuhkannya
-                    self._SLANG_TO_FORMAL_MAP = df_slang.set_index('slang')['formal'].to_dict()
+                    # Convert both slang and formal to lowercase for consistency
+                    # This ensures your map keys and values are ready for matching
+                    Normalizer._SLANG_TO_FORMAL_MAP = dict(zip(df_slang['slang'].str.lower(), df_slang['formal'].str.lower()))
+                    print(f"Korpus '{self.slangs_csv_path}' berhasil dimuat. ({len(Normalizer._SLANG_TO_FORMAL_MAP)} pasangan)")
                 else:
                     print(f"WARNING: '{self.slangs_csv_path}' must have 'slang' and 'formal' columns. Slang map empty.")
+                    Normalizer._SLANG_TO_FORMAL_MAP = {} # Ensure it's empty if columns missing
             except Exception as e:
                 print(f"WARNING: Error loading '{self.slangs_csv_path}': {e}. Slang map empty.")
+                Normalizer._SLANG_TO_FORMAL_MAP = {} # Ensure it's empty on error
         else:
             print(f"WARNING: '{self.slangs_csv_path}' not found. Slang map empty.")
+            Normalizer._SLANG_TO_FORMAL_MAP = {} # Ensure it's empty if file not found
 
     def text_to_words(self, s: str) -> list[str]:
-        re.findall(r"\w+|[^\w\s]", s, re.UNICODE)
+        return re.findall(r"\w+|[^\w\s]", s, re.UNICODE)
 
     def normalize_text(self, s: str) -> tuple[str, dict]:
         """
@@ -79,80 +97,116 @@ class Normalizer:
             return "", collections.defaultdict(int)
 
         counts = collections.defaultdict(int)
-        tokens = tokenize_text(s) # Panggil fungsi dari functions.py
-        normalized_tokens = []
+        # Tokenisasi awal
+        initial_tokens = tokenize_text(s)
+        
+        # --- Tahap 1: Normalisasi Pengulangan dan Leet ---
+        # Kita akan kumpulkan hasil sementara dari tahap ini di sini
+        temp_tokens_after_leet_stage = []
 
-        for token in tokens:
-            original_token = token
-            processed_token = token
+        for token in initial_tokens:
+            original_token_for_leet = token # Simpan original_token khusus untuk tahap leet
+            processed_token_for_leet_stage = token
 
-            # Hanya proses token yang kemungkinan adalah kata (regex \w+ cocok)
-            if re.fullmatch(r"\w+", token, re.UNICODE):
+            # Hanya proses token yang kemungkinan adalah kata (mengandung huruf atau angka)
+            if re.search(r'[a-zA-Z0-9]', token, re.UNICODE):
                 # 1. Panggil normalize_repetitions
-                temp_token = normalize_repetitions(processed_token) # Panggil fungsi dari functions.py
-                if temp_token != processed_token:
-                    counts['normalize_repetitions'] += 1
-                processed_token = temp_token
+                temp_rep_token = normalize_repetitions(processed_token_for_leet_stage)
+                if temp_rep_token != processed_token_for_leet_stage:
+                    counts['double_letters_words'] += 1
+                processed_token_for_leet_stage = temp_rep_token
 
-                # 2. Panggil normalize_leet (meneruskan common_words_set)
-                temp_token_leet = normalize_leet(processed_token, self._COMMON_WORDS) # Panggil fungsi dari functions.py
+                # 2. Panggil normalize_leet (meneruskan common_words_set) dan normalize_forced_leet
+                processed_token_after_soft_leet = normalize_leet(processed_token_for_leet_stage, self._COMMON_WORDS)
                 
-                # Cek kondisi untuk memanggil normalize_forced_leet
-                if temp_token_leet == processed_token and \
-                   re.search(r"[^a-zA-Z0-9_]", original_token) and \
-                   original_token.lower() not in self._COMMON_WORDS:
-                    
-                    temp_token_forced = normalize_forced_leet(original_token) # Panggil fungsi dari functions.py
-                    if temp_token_forced != original_token:
-                        counts['normalize_forced_leet'] += 1
-                    processed_token = temp_token_forced
+                # Default: anggap token tidak berubah dulu
+                final_token_for_this_stage = processed_token_for_leet_stage
+
+                # Jika normalize_leet berhasil mengubah token
+                if processed_token_after_soft_leet != processed_token_for_leet_stage:
+                    final_token_for_this_stage = processed_token_after_soft_leet
+                    counts['known_leet_words'] += 1
                 else:
-                    processed_token = temp_token_leet
-
-                # 3. Cek is_abbreviation (terhadap COMMON_WORDS)
-                found_abbr_conversion = False
-                for common_word in self._COMMON_WORDS: # Iterasi melalui COMMON_WORDS milik instance
-                    if is_abbreviation(processed_token, common_word): # Panggil fungsi dari functions.py
-                        processed_token = common_word
-                        counts['is_abbreviation'] += 1
-                        found_abbr_conversion = True
-                        break
+                    # Jika normalize_leet TIDAK mengubah token, maka coba FORCED LEET
+                    if re.search(r'[0-9!@$]', original_token_for_leet):
+                        
+                        # Asumsi normalize_forced_leet sekarang mengembalikan list[str]
+                        # (Jika itu yang kamu inginkan untuk "bgt2" -> "bgt bgt")
+                        temp_forced_leet_result_list = normalize_forced_leet(processed_token_for_leet_stage)
+                        
+                        # Jika forced leet berhasil mengubah token
+                        # Kita cek elemen pertama atau apakah listnya lebih dari satu
+                        if temp_forced_leet_result_list[0] != processed_token_for_leet_stage or len(temp_forced_leet_result_list) > 1:
+                            # Jika ada perubahan atau pecah jadi banyak token
+                            temp_tokens_after_leet_stage.extend(temp_forced_leet_result_list)
+                            counts['random_leet_words'] += 1
+                            # Lanjutkan ke token berikutnya di loop awal, karena ini sudah ditambahkan
+                            continue 
+                        else:
+                            # Forced leet tidak mengubahnya, biarkan token aslinya dari tahap ini
+                            final_token_for_this_stage = processed_token_for_leet_stage
+                    else:
+                        # Kondisi forced leet tidak terpenuhi, biarkan token aslinya dari tahap ini
+                        final_token_for_this_stage = processed_token_for_leet_stage
                 
-                # 4. Panggil slang_to_formal (meneruskan slang_map)
-                temp_token = slang_to_formal(processed_token, self._SLANG_TO_FORMAL_MAP) # Panggil fungsi dari functions.py
-                if temp_token != processed_token:
-                    counts['slang_to_formal'] += 1
-                processed_token = temp_token
+                # Jika token diproses dan tidak di-extend oleh forced leet multi-token, tambahkan di sini
+                temp_tokens_after_leet_stage.append(final_token_for_this_stage)
+            else:
+                # Jika token bukan kata (hanya tanda baca), tambahkan langsung
+                temp_tokens_after_leet_stage.append(token)
 
-                # 5. Panggil is_typo (terhadap COMMON_WORDS)
-                if processed_token.lower() not in self._COMMON_WORDS: # Hanya cek typo jika kata belum baku
-                    found_typo_correction = False
-                    for common_word_target in self._COMMON_WORDS: # Iterasi melalui COMMON_WORDS milik instance
-                        # Pastikan kita tidak membandingkan kata dengan dirinya sendiri
-                        if processed_token.lower() != common_word_target.lower() and \
-                           is_typo(processed_token, common_word_target): # Panggil fungsi dari functions.py
+        # --- Titik Krusial: Gabungkan dan Tokenisasi Ulang ---
+        # Gabungkan token-token yang sudah dinormalisasi leet
+        temp_joined_text = "".join(temp_tokens_after_leet_stage)
+
+        # Tokenisasi ulang teks yang sudah bersih dari leet
+        retokenized_tokens = tokenize_text(temp_joined_text)
+        
+        # --- Tahap 2: Normalisasi Singkatan, Slang, dan Typo ---
+        final_normalized_tokens = []
+        for token_after_leet in retokenized_tokens:
+            processed_token = token_after_leet # Token baru untuk tahap ini
+
+            # 3. Cek is_abbreviation (terhadap COMMON_WORDS)
+            if processed_token.lower() not in self._COMMON_WORDS:
+                # found_abbr_conversion = False # Tidak lagi dibutuhkan jika langsung break
+                for common_word in self._COMMON_WORDS_SORTED:
+                    if is_abbreviation(processed_token, common_word):
+                        if processed_token.lower() != common_word.lower():
+                            processed_token = common_word
+                            counts['abbreviated_words'] += 1
+                        break # Hentikan setelah menemukan kecocokan
+
+            # 4. Panggil slang_to_formal (meneruskan slang_map)
+            temp_token_slang = slang_to_formal(processed_token, self._SLANG_TO_FORMAL_MAP)
+            if temp_token_slang != processed_token:
+                counts['slangs'] += 1
+            processed_token = temp_token_slang
+
+            # 5. Panggil is_typo (terhadap COMMON_WORDS)
+            if processed_token.lower() not in self._COMMON_WORDS:
+                alpha_chars = sum(c.isalpha() for c in processed_token)
+                if len(processed_token) // 2 < alpha_chars:
+                    for common_word_target in self._COMMON_WORDS_SORTED:
+                        if is_typo(processed_token.lower(), common_word_target):
                             processed_token = common_word_target
-                            counts['is_typo'] += 1
-                            found_typo_correction = True
-                            break
+                            counts['typo_words'] += 1
+                            break # Hentikan setelah menemukan kecocokan
             
-            normalized_tokens.append(processed_token)
+            final_normalized_tokens.append(processed_token)
 
-        # Gabungkan kembali token menjadi string, dengan penanganan spasi di sekitar tanda baca
-        final_text = " ".join(normalized_tokens)
-        final_text = re.sub(r'\s([.,!?;:])', r'\1', final_text)
-        final_text = re.sub(r'([([{])\s', r'\1', final_text)
-        final_text = re.sub(r'\s([)\]}])', r'\1', final_text)
+        # Gabungkan kembali token final menjadi string
+        final_text = "".join(final_normalized_tokens)
 
         return final_text, dict(counts)
 
     def count_alays(self, s: str) -> int:
         """
-        3) Menghitung total kemunculan normalisasi alay (normalize_leet dan normalize_forced_leet)
+        3) Menghitung total kemunculan normalisasi alay
            dalam teks 's'. Memanggil `normalize_text` secara internal.
         """
         _, counts = self.normalize_text(s) # Panggil metode dari instance kelas
-        return counts['normalize_leet'] + counts['normalize_forced_leet']
+        return counts.get('known_leet_words', 0) + counts.get('random_leet_words', 0)
 
     def count_slangs(self, s: str) -> int:
         """
@@ -160,4 +214,28 @@ class Normalizer:
            Memanggil `normalize_text` secara internal.
         """
         _, counts = self.normalize_text(s) # Panggil metode dari instance kelas
-        return counts['slang_to_formal']
+        return counts.get('slangs', 0)
+
+if __name__ == "__main__":
+    print("--- Menjalankan Demo Normalizer ---")
+    
+    # Inisialisasi Normalizer
+    normalizer_instance = Normalizer()
+
+    # Teks yang akan diuji
+    text_to_test = "lagi gaje, btw mau kemana? nyebur?"
+
+    # Lakukan normalisasi
+    normalized_text, normalization_counts = normalizer_instance.normalize_text(text_to_test)
+
+    # Dapatkan jumlah alay dan slang
+    alay_count = normalizer_instance.count_alays(text_to_test)
+    slang_count = normalizer_instance.count_slangs(text_to_test)
+
+    print(f"\nOriginal Text: '{text_to_test}'")
+    print(f"Normalized Text: '{normalized_text}'")
+    print(f"Normalization Counts: {normalization_counts}")
+    print(f"Total Alay Count: {alay_count}")
+    print(f"Total Slang Count: {slang_count}")
+
+    print("\n--- Demo Selesai ---")
