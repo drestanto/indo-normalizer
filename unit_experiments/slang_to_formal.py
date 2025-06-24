@@ -37,7 +37,7 @@ if os.path.exists(csv_file):
 else:
     print(f"Peringatan: File CSV '{csv_file}' tidak ditemukan. Map slang kosong.")
 
-def slang_to_formal(word: str) -> str:
+def slang_to_formal(word):
     """
     Mengubah sebuah kata slang menjadi bentuk formalnya berdasarkan map yang dimuat dari CSV.
     Jika kata tidak ditemukan di map, kata aslinya akan dikembalikan.
