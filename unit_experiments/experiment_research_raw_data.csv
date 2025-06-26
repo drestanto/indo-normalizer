@@ -1,0 +1,11 @@
+Post ID,Original Text,Ground Truth (Manual),Indo-Normalizer Output,GPT-like Output
+1,aq gk ngerti sm skli,aku gak ngerti sama sekali,aku gak ngerti sama sekali,aku tidak mengerti sama sekali
+2,km lg ap?,kamu lagi apa?,kamu lagi apa?,kamu sedang apa?
+3,gpp sih asal km seneng,gak papa sih asal kamu senang,gak papa sih asal kamu senang,"tidak apa-apa, asal kamu senang"
+4,jd knp td g dateng?,jadi kenapa tadi gak datang?,jadi kenapa tadi gak datang?,jadi kenapa tadi tidak datang?
+5,blm mkn dr td,belum makan dari tadi,belum makan dari tadi,belum makan sejak tadi
+6,trs gw harus gmna?,terus gue harus gimana?,terus gue harus gimana?,lalu saya harus bagaimana?
+7,udh capek bgt,udah capek banget,udah capek banget,sudah sangat capek
+8,yg penting bsk libur,yang penting besok libur,yang penting besok libur,yang terpenting besok libur
+9,ntar jg sembuh,nanti juga sembuh,nanti juga sembuh,nanti juga akan sembuh
+10,padahal udh nunggu lma,padahal udah nunggu lama,padahal udah nunggu lama,padahal sudah menunggu lama
